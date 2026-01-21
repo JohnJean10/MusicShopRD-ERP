@@ -1,0 +1,5 @@
+{
+  "name": "MusicShopRD ERP Web",
+  "description": "A web-based ERP for MusicShopRD managing inventory, costs, and configurations. Ported from Flutter to React.",
+  "requestFramePermissions": []
+}
