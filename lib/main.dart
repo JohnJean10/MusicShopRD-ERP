@@ -6,6 +6,7 @@ import 'providers/app_providers.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/inventory_screen.dart';
 import 'screens/orders_kanban_screen.dart';
+import 'screens/purchase_orders_screen.dart';
 import 'screens/customers_screen.dart';
 import 'screens/suppliers_screen.dart';
 import 'screens/calculator_screen.dart';
@@ -46,6 +47,7 @@ class _MusicShopERPHomeState extends ConsumerState<MusicShopERPHome> {
     _NavItem(icon: Icons.dashboard_rounded, label: 'Inicio'),
     _NavItem(icon: Icons.inventory_2_rounded, label: 'Inventario'),
     _NavItem(icon: Icons.shopping_cart_rounded, label: 'Pedidos'),
+    _NavItem(icon: Icons.shopping_bag_rounded, label: 'Compras'),
     _NavItem(icon: Icons.people_rounded, label: 'Clientes'),
     _NavItem(icon: Icons.local_shipping_rounded, label: 'Proveedores'),
     _NavItem(icon: Icons.calculate_rounded, label: 'Calculadora'),
@@ -62,7 +64,7 @@ class _MusicShopERPHomeState extends ConsumerState<MusicShopERPHome> {
     Widget content;
     switch (_selectedIndex) {
       case 0:
-        content = DashboardScreen(products: products);
+        content = const DashboardScreen();
         break;
       case 1:
         content = InventoryScreen(
@@ -76,15 +78,18 @@ class _MusicShopERPHomeState extends ConsumerState<MusicShopERPHome> {
         content = const OrdersKanbanScreen();
         break;
       case 3:
-        content = const CustomersScreen();
+        content = const PurchaseOrdersScreen();
         break;
       case 4:
-        content = const SuppliersScreen();
+        content = const CustomersScreen();
         break;
       case 5:
-        content = CalculatorScreen(config: config);
+        content = const SuppliersScreen();
         break;
       case 6:
+        content = CalculatorScreen(config: config);
+        break;
+      case 7:
         content = SettingsScreen(
           config: config,
           onUpdate: (exchange, courier, packaging) =>
@@ -92,7 +97,7 @@ class _MusicShopERPHomeState extends ConsumerState<MusicShopERPHome> {
         );
         break;
       default:
-        content = DashboardScreen(products: products);
+        content = const DashboardScreen();
     }
 
     if (isWideScreen) {

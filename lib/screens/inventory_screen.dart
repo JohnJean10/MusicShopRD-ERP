@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/product.dart';
+import '../models/product_variant.dart';
 import '../providers/app_providers.dart';
 import '../services/export_service.dart';
 import '../widgets/app_theme.dart';
@@ -26,13 +27,15 @@ class InventoryScreen extends StatefulWidget {
 
 class _InventoryScreenState extends State<InventoryScreen> {
   String _searchTerm = '';
+  final Set<String> _expandedProducts = {};
 
   List<Product> get _filteredProducts {
     if (_searchTerm.isEmpty) return widget.products;
     final term = _searchTerm.toLowerCase();
     return widget.products.where((p) =>
       p.name.toLowerCase().contains(term) ||
-      p.sku.toLowerCase().contains(term)
+      p.modelId.toLowerCase().contains(term) ||
+      p.variants.any((v) => v.sku.toLowerCase().contains(term) || v.color.toLowerCase().contains(term))
     ).toList();
   }
 
@@ -56,12 +59,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
   }
 
-  void _confirmDelete(String sku, String name) {
+  void _confirmDelete(String modelId, String name) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Eliminar Producto'),
-        content: Text('¿Estás seguro de eliminar "$name"?'),
+        content: Text('¿Estás seguro de eliminar "$name" y todas sus variantes?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -70,7 +73,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.red500),
             onPressed: () {
-              widget.onDeleteProduct(sku);
+              widget.onDeleteProduct(modelId);
               Navigator.pop(context);
             },
             child: const Text('Eliminar'),
@@ -78,6 +81,20 @@ class _InventoryScreenState extends State<InventoryScreen> {
         ],
       ),
     );
+  }
+
+  Color _getVariantColorDot(String colorName) {
+    final name = colorName.toLowerCase();
+    if (name.contains('negro') || name.contains('black')) return Colors.black;
+    if (name.contains('blanco') || name.contains('white')) return Colors.white;
+    if (name.contains('dorado') || name.contains('gold')) return const Color(0xFFFFD700);
+    if (name.contains('plata') || name.contains('silver')) return Colors.grey.shade400;
+    if (name.contains('azul') || name.contains('blue')) return Colors.blue;
+    if (name.contains('rojo') || name.contains('red')) return Colors.red;
+    if (name.contains('verde') || name.contains('green')) return Colors.green;
+    if (name.contains('rosa') || name.contains('pink')) return Colors.pink;
+    if (name.contains('morado') || name.contains('purple')) return Colors.purple;
+    return AppColors.slate500;
   }
 
   @override
@@ -133,7 +150,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 style: const TextStyle(color: Colors.white),
                 onChanged: (v) => setState(() => _searchTerm = v),
                 decoration: InputDecoration(
-                  hintText: 'Buscar por nombre o SKU...',
+                  hintText: 'Buscar por nombre, SKU o color...',
                   prefixIcon: const Icon(Icons.search, color: AppColors.slate400),
                   filled: true,
                   fillColor: AppColors.slate800,
@@ -151,7 +168,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
           ),
         ),
 
-        // Table
+        // Product List with Expandable Tiles
         Expanded(
           child: Container(
             margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -172,149 +189,266 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     ],
                   ),
                 )
-              : LayoutBuilder(
-                  builder: (context, constraints) {
-                    final isWide = constraints.maxWidth > 600;
-                    return SingleChildScrollView(
-                      scrollDirection: Axis.vertical,
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(minWidth: constraints.maxWidth),
-                          child: DataTable(
-                            headingRowColor: WidgetStateProperty.all(AppColors.slate900.withValues(alpha: 0.5)),
-                            dataRowMinHeight: 60,
-                            dataRowMaxHeight: 80,
-                            columnSpacing: 16,
-                            horizontalMargin: 16,
-                            columns: [
-                              const DataColumn(label: Text('Producto', style: TextStyle(color: AppColors.slate400, fontWeight: FontWeight.w600))),
-                              const DataColumn(label: Text('Min/Max', style: TextStyle(color: AppColors.slate400, fontWeight: FontWeight.w600))),
-                              const DataColumn(label: Text('Stock', style: TextStyle(color: AppColors.slate400, fontWeight: FontWeight.w600))),
-                              const DataColumn(label: Text('Precio', style: TextStyle(color: AppColors.slate400, fontWeight: FontWeight.w600)), numeric: true),
-                              if (isWide)
-                                const DataColumn(label: Text('Landed', style: TextStyle(color: AppColors.slate400, fontWeight: FontWeight.w600)), numeric: true),
-                              const DataColumn(label: Text('', style: TextStyle(color: AppColors.slate400))),
-                            ],
-                            rows: _filteredProducts.map((p) {
-                              final landed = _calculateLandedCost(p.costUsd, p.weight);
-                              final isLow = p.stock <= p.minStock;
-                              final isOver = p.stock > p.maxStock;
-                              final maxScale = p.maxStock > 0 ? (p.maxStock * 1.2) : 10.0;
-                              final stockScale = (p.stock > maxScale) ? maxScale : p.stock.toDouble();
-                              final percent = (maxScale > 0) ? (stockScale / maxScale).clamp(0.0, 1.0) : 0.0;
-
-                              return DataRow(
-                                cells: [
-                                  DataCell(
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Text(p.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-                                        Text(p.sku, style: const TextStyle(color: AppColors.slate500, fontSize: 11)),
-                                      ],
-                                    ),
-                                  ),
-                                  DataCell(
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.arrow_downward, size: 10, color: AppColors.orange400.withValues(alpha: 0.8)),
-                                        Text('${p.minStock}', style: TextStyle(color: AppColors.orange400.withValues(alpha: 0.8), fontSize: 12, fontFamily: 'monospace')),
-                                        const SizedBox(width: 6),
-                                        const Text('|', style: TextStyle(color: AppColors.slate600)),
-                                        const SizedBox(width: 6),
-                                        Icon(Icons.arrow_upward, size: 10, color: AppColors.blue400.withValues(alpha: 0.8)),
-                                        Text('${p.maxStock}', style: TextStyle(color: AppColors.blue400.withValues(alpha: 0.8), fontSize: 12, fontFamily: 'monospace')),
-                                      ],
-                                    ),
-                                  ),
-                                  DataCell(
-                                    SizedBox(
-                                      width: 80,
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Text(
-                                                '${p.stock}',
-                                                style: TextStyle(
-                                                  color: isLow ? AppColors.red400 : (isOver ? AppColors.blue400 : AppColors.emerald400),
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 6),
-                                              if (isLow) ...[
-                                                const Icon(Icons.warning, size: 12, color: AppColors.red400),
-                                                const Text(' Bajo', style: TextStyle(color: AppColors.red400, fontSize: 10)),
-                                              ],
-                                              if (isOver)
-                                                const Text('Exceso', style: TextStyle(color: AppColors.blue400, fontSize: 10)),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 4),
-                                          ClipRRect(
-                                            borderRadius: BorderRadius.circular(4),
-                                            child: LinearProgressIndicator(
-                                              value: percent,
-                                              minHeight: 4,
-                                              backgroundColor: AppColors.slate900,
-                                              color: isLow ? AppColors.red500 : (isOver ? AppColors.blue500 : AppColors.emerald500),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  DataCell(
-                                    Text(
-                                      _formatCurrency(p.price),
-                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
-                                    ),
-                                  ),
-                                  if (isWide)
-                                    DataCell(
-                                      Text(
-                                        _formatCurrency(landed),
-                                        style: const TextStyle(color: AppColors.slate400, fontSize: 13, fontFamily: 'monospace'),
-                                      ),
-                                    ),
-                                  DataCell(
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(
-                                          icon: const Icon(Icons.edit, size: 20),
-                                          color: AppColors.blue400,
-                                          tooltip: 'Editar',
-                                          onPressed: () => _showAddModal(p),
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.delete_outline, size: 20),
-                                          color: AppColors.slate500,
-                                          hoverColor: AppColors.red500.withValues(alpha: 0.1),
-                                          tooltip: 'Eliminar',
-                                          onPressed: () => _confirmDelete(p.sku, p.name),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              );
-                            }).toList(),
-                          ),
-                        ),
-                      ),
-                    );
+              : ListView.builder(
+                  itemCount: _filteredProducts.length,
+                  itemBuilder: (context, index) {
+                    final product = _filteredProducts[index];
+                    final isExpanded = _expandedProducts.contains(product.modelId);
+                    final hasMultipleVariants = product.variants.length > 1;
+                    
+                    return _buildProductTile(product, isExpanded, hasMultipleVariants);
                   },
                 ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildProductTile(Product product, bool isExpanded, bool hasMultipleVariants) {
+    final landed = _calculateLandedCost(product.costUsd, product.weight);
+    final isLow = product.isLowStock;
+    
+    return Column(
+      children: [
+        // Product Header Row
+        InkWell(
+          onTap: hasMultipleVariants 
+            ? () => setState(() {
+                if (isExpanded) {
+                  _expandedProducts.remove(product.modelId);
+                } else {
+                  _expandedProducts.add(product.modelId);
+                }
+              })
+            : null,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: isLow ? AppColors.red500.withValues(alpha: 0.1) : Colors.transparent,
+              border: Border(
+                bottom: BorderSide(
+                  color: isExpanded ? Colors.transparent : AppColors.slate700,
+                  width: 0.5,
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                // Expand indicator (solo si tiene múltiples variantes)
+                if (hasMultipleVariants)
+                  Icon(
+                    isExpanded ? Icons.expand_less : Icons.expand_more,
+                    color: AppColors.slate400,
+                    size: 20,
+                  )
+                else
+                  const SizedBox(width: 20),
+                const SizedBox(width: 8),
+                
+                // Product info
+                Expanded(
+                  flex: 3,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            product.name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                          if (isLow) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppColors.red500,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'BAJO',
+                                style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${product.brand ?? ''} • ${product.variants.length} variante${product.variants.length > 1 ? 's' : ''}',
+                        style: const TextStyle(color: AppColors.slate500, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                // Stock total agregado
+                Expanded(
+                  flex: 1,
+                  child: Column(
+                    children: [
+                      Text(
+                        '${product.totalStock}',
+                        style: TextStyle(
+                          color: isLow ? AppColors.red400 : AppColors.emerald400,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        'Stock Total',
+                        style: TextStyle(color: AppColors.slate500, fontSize: 10),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                // Min/Max
+                Expanded(
+                  flex: 1,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.arrow_downward, size: 10, color: AppColors.orange400.withValues(alpha: 0.8)),
+                      Text('${product.minStock}', style: TextStyle(color: AppColors.orange400.withValues(alpha: 0.8), fontSize: 12)),
+                      const SizedBox(width: 4),
+                      const Text('|', style: TextStyle(color: AppColors.slate600)),
+                      const SizedBox(width: 4),
+                      Icon(Icons.arrow_upward, size: 10, color: AppColors.blue400.withValues(alpha: 0.8)),
+                      Text('${product.maxStock}', style: TextStyle(color: AppColors.blue400.withValues(alpha: 0.8), fontSize: 12)),
+                    ],
+                  ),
+                ),
+                
+                // Price
+                Expanded(
+                  flex: 1,
+                  child: Text(
+                    _formatCurrency(product.price),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                
+                // Landed Cost
+                Expanded(
+                  flex: 1,
+                  child: Text(
+                    _formatCurrency(landed),
+                    style: const TextStyle(color: AppColors.slate400, fontSize: 12, fontFamily: 'monospace'),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                
+                // Actions
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit, size: 18),
+                      color: AppColors.blue400,
+                      tooltip: 'Editar',
+                      onPressed: () => _showAddModal(product),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      color: AppColors.slate500,
+                      tooltip: 'Eliminar',
+                      onPressed: () => _confirmDelete(product.modelId, product.name),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        
+        // Expanded Variant Rows
+        if (isExpanded)
+          ...product.variants.map((variant) => _buildVariantRow(product, variant)),
+      ],
+    );
+  }
+
+  Widget _buildVariantRow(Product product, ProductVariant variant) {
+    final variantIsLow = variant.stock < (product.minStock / product.variants.length).ceil();
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.only(left: 28),
+      decoration: BoxDecoration(
+        color: AppColors.slate900.withValues(alpha: 0.5),
+        border: Border(
+          bottom: BorderSide(color: AppColors.slate700.withValues(alpha: 0.5), width: 0.5),
+          left: BorderSide(color: AppColors.emerald500.withValues(alpha: 0.3), width: 2),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Color dot
+          Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              color: _getVariantColorDot(variant.color),
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.slate600, width: 1),
+            ),
+          ),
+          const SizedBox(width: 12),
+          
+          // Variant info
+          Expanded(
+            flex: 3,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  variant.color,
+                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                ),
+                Text(
+                  variant.sku,
+                  style: const TextStyle(color: AppColors.slate500, fontSize: 10, fontFamily: 'monospace'),
+                ),
+              ],
+            ),
+          ),
+          
+          // Variant stock
+          Expanded(
+            flex: 1,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  '${variant.stock}',
+                  style: TextStyle(
+                    color: variantIsLow ? AppColors.orange400 : AppColors.slate300,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (variantIsLow) ...[
+                  const SizedBox(width: 4),
+                  Icon(Icons.warning_amber, size: 12, color: AppColors.orange400),
+                ],
+              ],
+            ),
+          ),
+          
+          // Spacers for alignment
+          const Expanded(flex: 1, child: SizedBox()),
+          const Expanded(flex: 1, child: SizedBox()),
+          const Expanded(flex: 1, child: SizedBox()),
+          const SizedBox(width: 80), // Actions column width
+        ],
+      ),
     );
   }
 }

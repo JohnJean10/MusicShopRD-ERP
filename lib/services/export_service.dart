@@ -48,7 +48,7 @@ class ExportService {
             },
             headers: ['SKU', 'Producto', 'Stock', 'Precio Venta', 'Costo USD'],
             data: products.map((p) => [
-              p.sku,
+              p.primarySku,
               p.name,
               p.stock.toString(),
               _formatCurrency(p.price),
@@ -219,7 +219,7 @@ class ExportService {
     // Data rows
     for (var p in products) {
       sheet.appendRow([
-        TextCellValue(p.sku),
+        TextCellValue(p.primarySku),
         TextCellValue(p.name),
         DoubleCellValue(p.costUsd),
         DoubleCellValue(p.weight),

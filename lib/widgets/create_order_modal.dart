@@ -43,7 +43,7 @@ class _CreateOrderModalState extends ConsumerState<CreateOrderModal> {
     final term = _searchTerm.toLowerCase();
     return widget.products.where((p) =>
       p.name.toLowerCase().contains(term) ||
-      p.sku.toLowerCase().contains(term)
+      p.primarySku.toLowerCase().contains(term)
     ).toList();
   }
 
@@ -62,7 +62,7 @@ class _CreateOrderModalState extends ConsumerState<CreateOrderModal> {
       return;
     }
 
-    final existingIndex = _cart.indexWhere((i) => i.product.sku == product.sku);
+    final existingIndex = _cart.indexWhere((i) => i.product.primarySku == product.primarySku);
     
     if (existingIndex >= 0) {
       // Check if adding 1 more exceeds stock
@@ -136,7 +136,7 @@ class _CreateOrderModalState extends ConsumerState<CreateOrderModal> {
       // We could add customerId to Order model later if needed.
       date: DateTime.now(),
       items: _cart.map((c) => OrderItem(
-        sku: c.product.sku,
+        sku: c.product.primarySku,
         name: c.product.name,
         quantity: c.quantity,
         price: c.product.price,
@@ -317,7 +317,7 @@ class _CreateOrderModalState extends ConsumerState<CreateOrderModal> {
                             subtitle: Row(
                               children: [
                                 Text(
-                                  '${p.sku} · ${_formatCurrency(p.price)}',
+                                  '${p.primarySku} · ${_formatCurrency(p.price)}',
                                   style: const TextStyle(color: AppColors.slate400, fontSize: 12),
                                 ),
                                 if (!widget.isQuote && !hasStock)

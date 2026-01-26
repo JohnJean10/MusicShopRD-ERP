@@ -17,12 +17,17 @@ class DbHelper {
     return _prefs!;
   }
 
-  // Products CRUD
+  // Products CRUD - Ahora usa modelId como identificador principal
   Future<void> insertProduct(Map<String, dynamic> row) async {
     final prefs = await database;
     final products = await fetchProducts();
     
-    final existingIndex = products.indexWhere((p) => p['sku'] == row['sku']);
+    // Usar modelId como identificador único del producto
+    final modelId = row['modelId'] ?? row['sku'];
+    final existingIndex = products.indexWhere((p) => 
+      (p['modelId'] ?? p['sku']) == modelId
+    );
+    
     if (existingIndex >= 0) {
       products[existingIndex] = row;
     } else {
@@ -41,17 +46,19 @@ class DbHelper {
     return decoded.map((item) => Map<String, dynamic>.from(item)).toList();
   }
 
-  Future<void> deleteProduct(String sku) async {
+  Future<void> deleteProduct(String modelId) async {
     final prefs = await database;
     final products = await fetchProducts();
-    products.removeWhere((p) => p['sku'] == sku);
+    products.removeWhere((p) => (p['modelId'] ?? p['sku']) == modelId);
     await prefs.setString(_productsKey, jsonEncode(products));
   }
 
-  Future<void> updateProduct(String sku, Map<String, dynamic> row) async {
+  Future<void> updateProduct(String modelId, Map<String, dynamic> row) async {
     final prefs = await database;
     final products = await fetchProducts();
-    final index = products.indexWhere((p) => p['sku'] == sku);
+    final index = products.indexWhere((p) => 
+      (p['modelId'] ?? p['sku']) == modelId
+    );
     if (index >= 0) {
       products[index] = row;
       await prefs.setString(_productsKey, jsonEncode(products));
@@ -179,5 +186,48 @@ class DbHelper {
     final suppliers = await fetchSuppliers();
     suppliers.removeWhere((s) => s['id'] == id);
     await prefs.setString(_suppliersKey, jsonEncode(suppliers));
+  }
+
+  // Purchase Orders CRUD
+  static const String _purchaseOrdersKey = 'purchase_orders_data';
+
+  Future<void> insertPurchaseOrder(Map<String, dynamic> row) async {
+    final prefs = await database;
+    final orders = await fetchPurchaseOrders();
+    
+    final existingIndex = orders.indexWhere((o) => o['id'] == row['id']);
+    if (existingIndex >= 0) {
+      orders[existingIndex] = row;
+    } else {
+      orders.add(row);
+    }
+    
+    await prefs.setString(_purchaseOrdersKey, jsonEncode(orders));
+  }
+
+  Future<List<Map<String, dynamic>>> fetchPurchaseOrders() async {
+    final prefs = await database;
+    final data = prefs.getString(_purchaseOrdersKey);
+    if (data == null || data.isEmpty) return [];
+    
+    final List<dynamic> decoded = jsonDecode(data);
+    return decoded.map((item) => Map<String, dynamic>.from(item)).toList();
+  }
+
+  Future<void> updatePurchaseOrder(String id, Map<String, dynamic> row) async {
+    final prefs = await database;
+    final orders = await fetchPurchaseOrders();
+    final index = orders.indexWhere((o) => o['id'] == id);
+    if (index >= 0) {
+      orders[index] = row;
+      await prefs.setString(_purchaseOrdersKey, jsonEncode(orders));
+    }
+  }
+
+  Future<void> deletePurchaseOrder(String id) async {
+    final prefs = await database;
+    final orders = await fetchPurchaseOrders();
+    orders.removeWhere((o) => o['id'] == id);
+    await prefs.setString(_purchaseOrdersKey, jsonEncode(orders));
   }
 }

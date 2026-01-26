@@ -1,9 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/product.dart';
+import '../models/product_variant.dart';
 import '../models/order.dart';
 import '../models/customer.dart';
 import '../models/supplier.dart';
+import '../models/purchase_order.dart';
 import '../services/database_helper.dart';
 
 // ============= Config State =============
@@ -62,51 +64,111 @@ class ProductNotifier extends StateNotifier<List<Product>> {
     await refreshProducts();
   }
 
-  String generateAutoSKU(String brand, String? color) {
-    // 1. Brand Identifier (first 2 letters uppercase)
+  /// Genera un SKU único para una variante basado en marca + color + secuencia
+  String generateVariantSKU(String brand, String color) {
     if (brand.length < 2) return '';
     final brandId = brand.substring(0, 2).toUpperCase();
     
-    // 2. Color Identifier (optional)
     String colorId = '';
-    if (color != null && color.isNotEmpty) {
+    if (color.isNotEmpty) {
       final colorLetter = color[0].toUpperCase();
       
-      // Count existing variants with same brand and color letter
-      final sameColorProducts = state.where((p) => 
-        p.brand?.toLowerCase() == brand.toLowerCase() && 
-        p.color?.isNotEmpty == true &&
-        p.color![0].toUpperCase() == colorLetter
-      ).length;
-      
-      colorId = '$colorLetter${sameColorProducts + 1}';
+      // Contar variantes existentes con misma marca y primera letra de color
+      int sameColorCount = 0;
+      for (final product in state) {
+        for (final variant in product.variants) {
+          if (product.brand?.toLowerCase() == brand.toLowerCase() &&
+              variant.color.isNotEmpty &&
+              variant.color[0].toUpperCase() == colorLetter) {
+            sameColorCount++;
+          }
+        }
+      }
+      colorId = '$colorLetter${sameColorCount + 1}';
     }
     
-    // 3. Sequence Number (chronological, 3 digits)
-    final sequence = (state.length + 1).toString().padLeft(3, '0');
+    // Secuencia total de variantes en el sistema
+    int totalVariants = 0;
+    for (final product in state) {
+      totalVariants += product.variants.length;
+    }
+    final sequence = (totalVariants + 1).toString().padLeft(3, '0');
     
     return '$brandId$colorId$sequence';
   }
 
+  /// Genera un modelId único para un producto nuevo
+  String generateModelId(String brand) {
+    if (brand.length < 2) return DateTime.now().millisecondsSinceEpoch.toString();
+    final brandId = brand.substring(0, 3).toUpperCase();
+    final sequence = (state.length + 1).toString().padLeft(4, '0');
+    return 'MOD-$brandId-$sequence';
+  }
+
   Future<void> updateProduct(Product p) async {
-    await DbHelper.instance.updateProduct(p.sku, p.toMap());
+    await DbHelper.instance.updateProduct(p.modelId, p.toMap());
     await refreshProducts();
   }
 
-  Future<void> deleteProduct(String sku) async {
-    await DbHelper.instance.deleteProduct(sku);
+  Future<void> deleteProduct(String modelId) async {
+    await DbHelper.instance.deleteProduct(modelId);
     await refreshProducts();
   }
 
-  void updateStock(String sku, int delta) {
-    final index = state.indexWhere((p) => p.sku == sku);
-    if (index >= 0) {
-      final product = state[index];
-      final newStock = product.stock + delta;
-      final updated = product.copyWith(stock: newStock >= 0 ? newStock : 0);
-      DbHelper.instance.updateProduct(sku, updated.toMap());
-      state = [...state]..[index] = updated;
+  /// Actualiza el stock de una variante específica
+  void updateVariantStock(String variantSku, int delta) {
+    for (int i = 0; i < state.length; i++) {
+      final product = state[i];
+      final variantIndex = product.variants.indexWhere((v) => v.sku == variantSku);
+      
+      if (variantIndex >= 0) {
+        final variant = product.variants[variantIndex];
+        final newStock = variant.stock + delta;
+        variant.stock = newStock >= 0 ? newStock : 0;
+        
+        // Persistir el cambio
+        DbHelper.instance.updateProduct(product.modelId, product.toMap());
+        
+        // Actualizar el estado
+        state = [...state];
+        return;
+      }
     }
+  }
+
+  /// Agrega una nueva variante a un producto existente
+  Future<void> addVariantToProduct(String modelId, ProductVariant variant) async {
+    final index = state.indexWhere((p) => p.modelId == modelId);
+    if (index >= 0) {
+      state[index].addVariant(variant);
+      await DbHelper.instance.updateProduct(modelId, state[index].toMap());
+      state = [...state];
+    }
+  }
+
+  /// Elimina una variante de un producto
+  Future<void> removeVariantFromProduct(String modelId, String variantSku) async {
+    final index = state.indexWhere((p) => p.modelId == modelId);
+    if (index >= 0) {
+      state[index].removeVariant(variantSku);
+      await DbHelper.instance.updateProduct(modelId, state[index].toMap());
+      state = [...state];
+    }
+  }
+
+  /// Obtiene productos con stock bajo (agregado de todas sus variantes)
+  List<Product> getLowStockProducts() {
+    return state.where((p) => p.isLowStock).toList();
+  }
+
+  /// Busca un producto por el SKU de cualquiera de sus variantes
+  Product? findByVariantSku(String sku) {
+    for (final product in state) {
+      if (product.variants.any((v) => v.sku == sku)) {
+        return product;
+      }
+    }
+    return null;
   }
 }
 
@@ -133,7 +195,7 @@ class OrderNotifier extends StateNotifier<List<Order>> {
     if (order.status != OrderStatus.quote) {
       final productNotifier = _ref.read(productProvider.notifier);
       for (final item in order.items) {
-        productNotifier.updateStock(item.sku, -item.quantity);
+        productNotifier.updateVariantStock(item.sku, -item.quantity);
       }
     }
     
@@ -151,7 +213,7 @@ class OrderNotifier extends StateNotifier<List<Order>> {
         updatedOrder.status != OrderStatus.quote && 
         updatedOrder.status != OrderStatus.cancelled) {
       for (final item in updatedOrder.items) {
-        productNotifier.updateStock(item.sku, -item.quantity);
+        productNotifier.updateVariantStock(item.sku, -item.quantity);
       }
     }
     
@@ -160,7 +222,7 @@ class OrderNotifier extends StateNotifier<List<Order>> {
         oldOrder.status != OrderStatus.cancelled &&
         updatedOrder.status == OrderStatus.cancelled) {
       for (final item in updatedOrder.items) {
-        productNotifier.updateStock(item.sku, item.quantity);
+        productNotifier.updateVariantStock(item.sku, item.quantity);
       }
     }
     
@@ -235,3 +297,68 @@ class SupplierNotifier extends StateNotifier<List<Supplier>> {
 }
 
 final supplierProvider = StateNotifierProvider<SupplierNotifier, List<Supplier>>((ref) => SupplierNotifier());
+
+// ============= Purchase Orders State =============
+// ============= Purchase Orders State =============
+
+class PurchaseOrderNotifier extends StateNotifier<List<PurchaseOrder>> {
+  final Ref _ref;
+
+  PurchaseOrderNotifier(this._ref) : super([]) {
+    refreshPurchaseOrders();
+  }
+
+  Future<void> refreshPurchaseOrders() async {
+    final data = await DbHelper.instance.fetchPurchaseOrders();
+    state = data.map((item) => PurchaseOrder.fromMap(item)).toList();
+  }
+
+  Future<void> addPurchaseOrder(PurchaseOrder order) async {
+    await DbHelper.instance.insertPurchaseOrder(order.toMap());
+    
+    // If received immediately (rare but possible), add stock
+    if (order.status == PurchaseOrderStatus.received) {
+      final productNotifier = _ref.read(productProvider.notifier);
+      for (final item in order.items) {
+        productNotifier.updateVariantStock(item.sku, item.quantity);
+      }
+    }
+    
+    await refreshPurchaseOrders();
+  }
+
+  Future<void> updatePurchaseOrder(PurchaseOrder updatedOrder) async {
+    final oldOrder = state.firstWhere((o) => o.id == updatedOrder.id, orElse: () => updatedOrder);
+    
+    // Handle stock updates on status change
+    // Not received -> Received: Add stock
+    if (oldOrder.status != PurchaseOrderStatus.received && 
+        updatedOrder.status == PurchaseOrderStatus.received) {
+      final productNotifier = _ref.read(productProvider.notifier);
+      for (final item in updatedOrder.items) {
+        productNotifier.updateVariantStock(item.sku, item.quantity);
+      }
+    }
+    
+    // Received -> Not received (e.g. cancelled/revert): Deduct stock
+    if (oldOrder.status == PurchaseOrderStatus.received && 
+        updatedOrder.status != PurchaseOrderStatus.received) {
+      final productNotifier = _ref.read(productProvider.notifier);
+      for (final item in updatedOrder.items) {
+        productNotifier.updateVariantStock(item.sku, -item.quantity);
+      }
+    }
+    
+    await DbHelper.instance.updatePurchaseOrder(updatedOrder.id, updatedOrder.toMap());
+    await refreshPurchaseOrders();
+  }
+
+  Future<void> deletePurchaseOrder(String id) async {
+    // Note: Deleting a received order does NOT automatically revert stock
+    // This is a design choice to prevent accidental massive stock changes
+    await DbHelper.instance.deletePurchaseOrder(id);
+    await refreshPurchaseOrders();
+  }
+}
+
+final purchaseOrderProvider = StateNotifierProvider<PurchaseOrderNotifier, List<PurchaseOrder>>((ref) => PurchaseOrderNotifier(ref));
