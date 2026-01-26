@@ -30,6 +30,9 @@ class AppColors {
   
   static const Color red500 = Color(0xFFEF4444);
   static const Color red400 = Color(0xFFF87171);
+
+  static const Color purple500 = Color(0xFFA855F7);
+  static const Color purple400 = Color(0xFFC084FC);
 }
 
 class AppTheme {
