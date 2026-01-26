@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/purchase_order.dart';
 import '../providers/app_providers.dart';
 import '../widgets/app_theme.dart';
+import '../widgets/create_purchase_order_modal.dart';
 
 class PurchaseOrdersScreen extends ConsumerStatefulWidget {
   const PurchaseOrdersScreen({super.key});
@@ -49,17 +50,24 @@ class _PurchaseOrdersScreenState extends ConsumerState<PurchaseOrdersScreen> {
                   letterSpacing: -0.5,
                 ),
               ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  // TODO: Show Create Purchase Order Modal
-                },
-                icon: const Icon(Icons.add),
-                label: const Text('Nueva Orden'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.purple500,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 ),
+                onPressed: () {
+                  showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (context) => Padding(
+                      padding: EdgeInsets.only(
+                        bottom: MediaQuery.of(context).viewInsets.bottom,
+                      ),
+                      child: const CreatePurchaseOrderModal(),
+                    ),
+                  );
+                },
               ),
             ],
           ),
