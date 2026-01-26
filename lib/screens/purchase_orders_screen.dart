@@ -50,11 +50,7 @@ class _PurchaseOrdersScreenState extends ConsumerState<PurchaseOrdersScreen> {
                   letterSpacing: -0.5,
                 ),
               ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.purple500,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                ),
+              ElevatedButton.icon(
                 onPressed: () {
                   showModalBottomSheet(
                     context: context,
@@ -68,6 +64,13 @@ class _PurchaseOrdersScreenState extends ConsumerState<PurchaseOrdersScreen> {
                     ),
                   );
                 },
+                icon: const Icon(Icons.add),
+                label: const Text('Nueva Orden'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.purple500,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                ),
               ),
             ],
           ),
