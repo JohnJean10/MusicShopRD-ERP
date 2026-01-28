@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../models/order.dart';
 import '../models/product.dart';
+import '../models/product_variant.dart';
 import '../models/customer.dart';
 import '../providers/app_providers.dart';
 import 'app_theme.dart';
@@ -26,9 +27,10 @@ class CreateOrderModal extends ConsumerStatefulWidget {
 
 class _CartItem {
   final Product product;
+  final ProductVariant variant;
   int quantity = 1;
   
-  _CartItem({required this.product});
+  _CartItem({required this.product, required this.variant});
   
   double get total => product.price * quantity;
 }
@@ -50,25 +52,36 @@ class _CreateOrderModalState extends ConsumerState<CreateOrderModal> {
   double get _cartTotal => _cart.fold(0, (sum, item) => sum + item.total);
 
   String _formatCurrency(double amount) {
-    return NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$').format(amount);
+    return NumberFormat.currency(locale: 'en_US', symbol: 'RD\$').format(amount);
   }
 
-  void _addToCart(Product product) {
-    // Stock Validation
-    if (!widget.isQuote && product.stock <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No hay stock disponible para este producto'), backgroundColor: AppColors.red500),
+  void _addToCart(Product product, [ProductVariant? variant]) {
+    // If no variant passed, try to use the first one (for legacy/single compatibility)
+    final targetVariant = variant ?? (product.variants.isNotEmpty ? product.variants.first : null);
+    
+    if (targetVariant == null) {
+      // Should not happen given data migration, but safety check
+       ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error: Producto sin variantes'), backgroundColor: AppColors.red500),
       );
       return;
     }
 
-    final existingIndex = _cart.indexWhere((i) => i.product.primarySku == product.primarySku);
+    // Stock Validation for the specific variant
+    if (!widget.isQuote && targetVariant.stock <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No hay stock disponible para ${targetVariant.color}'), backgroundColor: AppColors.red500),
+      );
+      return;
+    }
+
+    final existingIndex = _cart.indexWhere((i) => i.variant.sku == targetVariant.sku);
     
     if (existingIndex >= 0) {
       // Check if adding 1 more exceeds stock
-      if (!widget.isQuote && _cart[existingIndex].quantity + 1 > product.stock) {
+      if (!widget.isQuote && _cart[existingIndex].quantity + 1 > targetVariant.stock) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Stock insuficiente'), backgroundColor: AppColors.red500),
+          const SnackBar(content: Text('Stock insuficiente para esta variante'), backgroundColor: AppColors.red500),
         );
         return;
       }
@@ -77,7 +90,7 @@ class _CreateOrderModalState extends ConsumerState<CreateOrderModal> {
       });
     } else {
       setState(() {
-        _cart.add(_CartItem(product: product));
+        _cart.add(_CartItem(product: product, variant: targetVariant));
       });
     }
   }
@@ -98,7 +111,7 @@ class _CreateOrderModalState extends ConsumerState<CreateOrderModal> {
     }
 
     // Stock Validation
-    if (!widget.isQuote && delta > 0 && newQty > item.product.stock) {
+    if (!widget.isQuote && delta > 0 && newQty > item.variant.stock) {
       ScaffoldMessenger.of(context).showSnackBar(
          const SnackBar(content: Text('Stock insuficiente para aumentar cantidad'), backgroundColor: AppColors.red500),
       );
@@ -136,8 +149,8 @@ class _CreateOrderModalState extends ConsumerState<CreateOrderModal> {
       // We could add customerId to Order model later if needed.
       date: DateTime.now(),
       items: _cart.map((c) => OrderItem(
-        sku: c.product.primarySku,
-        name: c.product.name,
+        sku: c.variant.sku,
+        name: '${c.product.name} (${c.variant.color})',
         quantity: c.quantity,
         price: c.product.price,
         total: c.total,
@@ -310,29 +323,68 @@ class _CreateOrderModalState extends ConsumerState<CreateOrderModal> {
                         itemBuilder: (context, index) {
                           final p = _filteredProducts[index];
                           final hasStock = p.stock > 0;
-                          return ListTile(
-                            dense: true,
-                            enabled: widget.isQuote || hasStock,
-                            title: Text(p.name, style: TextStyle(color: (widget.isQuote || hasStock) ? Colors.white : AppColors.slate500)),
-                            subtitle: Row(
-                              children: [
-                                Text(
-                                  '${p.primarySku} · ${_formatCurrency(p.price)}',
+                          if (p.variants.length > 1) {
+                            // Multiple variants: Show ExpansionTile
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              decoration: BoxDecoration(
+                                color: AppColors.slate800,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: ExpansionTile(
+                                title: Text(p.name, style: const TextStyle(color: Colors.white)),
+                                subtitle: Text(
+                                  '${p.variants.length} variantes · ${_formatCurrency(p.price)}',
                                   style: const TextStyle(color: AppColors.slate400, fontSize: 12),
                                 ),
-                                if (!widget.isQuote && !hasStock)
-                                  const Padding(
-                                    padding: EdgeInsets.only(left: 8),
-                                    child: Text('Sin Stock', style: TextStyle(color: AppColors.red500, fontSize: 10, fontWeight: FontWeight.bold)),
-                                  )
-                              ],
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.add_circle),
-                              color: (widget.isQuote || hasStock) ? AppColors.emerald500 : AppColors.slate600,
-                              onPressed: (widget.isQuote || hasStock) ? () => _addToCart(p) : null,
-                            ),
-                          );
+                                children: p.variants.map((v) {
+                                  final hasStock = v.stock > 0;
+                                  return ListTile(
+                                    dense: true,
+                                    title: Text(v.color, style: const TextStyle(color: AppColors.slate200)),
+                                    subtitle: Text(
+                                      'SKU: ${v.sku} · Stock: ${v.stock}',
+                                      style: TextStyle(
+                                        color: hasStock ? AppColors.slate500 : AppColors.red400,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                    trailing: IconButton(
+                                      icon: const Icon(Icons.add_circle, size: 20),
+                                      color: (widget.isQuote || hasStock) ? AppColors.emerald500 : AppColors.slate600,
+                                      onPressed: (widget.isQuote || hasStock) ? () => _addToCart(p, v) : null,
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            );
+                          } else {
+                            // Single variant: Show simple ListTile
+                            final hasStock = p.stock > 0;
+                            return ListTile(
+                              dense: true,
+                              enabled: widget.isQuote || hasStock,
+                              title: Text(p.name, style: TextStyle(color: (widget.isQuote || hasStock) ? Colors.white : AppColors.slate500)),
+                              subtitle: Row(
+                                children: [
+                                  Text(
+                                    '${p.primarySku} · ${_formatCurrency(p.price)}',
+                                    style: const TextStyle(color: AppColors.slate400, fontSize: 12),
+                                  ),
+                                  if (!widget.isQuote && !hasStock)
+                                    const Padding(
+                                      padding: EdgeInsets.only(left: 8),
+                                      child: Text('Sin Stock', style: TextStyle(color: AppColors.red500, fontSize: 10, fontWeight: FontWeight.bold)),
+                                    )
+                                ],
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.add_circle),
+                                color: (widget.isQuote || hasStock) ? AppColors.emerald500 : AppColors.slate600,
+                                onPressed: (widget.isQuote || hasStock) ? () => _addToCart(p) : null,
+                              ),
+                            );
+                          }
                         },
                       ),
                     ),
@@ -410,7 +462,7 @@ class _CreateOrderModalState extends ConsumerState<CreateOrderModal> {
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            item.product.name,
+                                            '${item.product.name} (${item.variant.color})',
                                             style: const TextStyle(color: Colors.white),
                                           ),
                                           Text(

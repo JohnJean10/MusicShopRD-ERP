@@ -5,12 +5,16 @@ class ProductVariant {
   final String color;     // Color o identificador de la variante
   int stock;              // Stock individual de esta variante
   final String? imageUrl; // URL de imagen opcional
+  int? minStock;          // Min stock individual (null = usar global del producto)
+  int? maxStock;          // Max stock individual (null = usar global del producto)
 
   ProductVariant({
     required this.sku,
     required this.color,
     required this.stock,
     this.imageUrl,
+    this.minStock,
+    this.maxStock,
   });
 
   Map<String, dynamic> toMap() {
@@ -19,6 +23,8 @@ class ProductVariant {
       'color': color,
       'stock': stock,
       'imageUrl': imageUrl,
+      'minStock': minStock,
+      'maxStock': maxStock,
     };
   }
 
@@ -28,6 +34,8 @@ class ProductVariant {
       color: map['color'] ?? 'Default',
       stock: map['stock'] ?? 0,
       imageUrl: map['imageUrl'],
+      minStock: map['minStock'],
+      maxStock: map['maxStock'],
     );
   }
 
@@ -36,12 +44,16 @@ class ProductVariant {
     String? color,
     int? stock,
     String? imageUrl,
+    int? minStock,
+    int? maxStock,
   }) {
     return ProductVariant(
       sku: sku ?? this.sku,
       color: color ?? this.color,
       stock: stock ?? this.stock,
       imageUrl: imageUrl ?? this.imageUrl,
+      minStock: minStock ?? this.minStock,
+      maxStock: maxStock ?? this.maxStock,
     );
   }
 }

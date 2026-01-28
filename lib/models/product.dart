@@ -6,26 +6,56 @@ class Product {
   final String modelId;     // ID único del modelo de producto
   final String name;        // Nombre comercial del producto
   final String? brand;      // Marca del producto
-  final double costUsd;     // Costo base en USD
+  final double itemCostUsd;    // Costo del artículo en USD
+  final double shippingCostUsd; // Costo de envío por unidad en USD
   final double weight;      // Peso en libras
   double price;             // Precio de venta en RD$
-  int minStock;             // Stock mínimo (nivel de alerta)
-  int maxStock;             // Stock máximo
+  int minStock;             // Stock mínimo (nivel de alerta) - global
+  int maxStock;             // Stock máximo - global
+  bool useIndividualMinMax; // Flag para usar min/max por variante
   final String? supplierId; // Enlace opcional con proveedor
+  final String? purchaseLink; // URL de compra del proveedor
   List<ProductVariant> variants; // Lista de variantes (colores/versiones)
 
   Product({
     required this.modelId,
     required this.name,
     this.brand,
-    required this.costUsd,
+    required this.itemCostUsd,
+    this.shippingCostUsd = 0,
     required this.weight,
     this.price = 0,
     required this.minStock,
     required this.maxStock,
+    this.useIndividualMinMax = false,
     this.supplierId,
+    this.purchaseLink,
     List<ProductVariant>? variants,
   }) : variants = variants ?? [];
+
+  /// Costo total por unidad en USD (artículo + envío)
+  double get totalCostUsd => itemCostUsd + shippingCostUsd;
+
+  /// Costo "aterrizado" en RD$ (costo USD * tasa + peso * tarifa courier)
+  double landedCostRds(double exchangeRate, double courierRate) {
+    return (totalCostUsd * exchangeRate) + (weight * courierRate);
+  }
+
+  /// Margen de beneficio (%) basado en costo aterrizado
+  double marginPercent(double exchangeRate, double courierRate) {
+    final landed = landedCostRds(exchangeRate, courierRate);
+    if (landed <= 0 || price <= 0) return 0;
+    return ((price - landed) / landed) * 100;
+  }
+
+  /// Calcula precio desde un margen deseado
+  double priceFromMargin(double marginPercent, double exchangeRate, double courierRate) {
+    final landed = landedCostRds(exchangeRate, courierRate);
+    return landed * (1 + marginPercent / 100);
+  }
+
+  /// Compatibilidad: getter para costUsd (devuelve itemCostUsd)
+  double get costUsd => itemCostUsd;
 
   /// Stock total agregado de todas las variantes
   int get totalStock => variants.fold(0, (sum, v) => sum + v.stock);
@@ -47,12 +77,15 @@ class Product {
       'modelId': modelId,
       'name': name,
       'brand': brand,
-      'costUsd': costUsd,
+      'itemCostUsd': itemCostUsd,
+      'shippingCostUsd': shippingCostUsd,
       'weight': weight,
       'price': price,
       'minStock': minStock,
       'maxStock': maxStock,
+      'useIndividualMinMax': useIndividualMinMax,
       'supplierId': supplierId,
+      'purchaseLink': purchaseLink,
       'variants': variants.map((v) => v.toMap()).toList(),
     };
   }
@@ -67,16 +100,22 @@ class Product {
         ?.map((v) => ProductVariant.fromMap(Map<String, dynamic>.from(v)))
         .toList() ?? [];
 
+    // Migración: soportar costUsd legado -> itemCostUsd
+    final itemCost = (map['itemCostUsd'] ?? map['costUsd'] ?? 0).toDouble();
+
     return Product(
       modelId: map['modelId'] ?? map['sku'] ?? '',
       name: map['name'] ?? '',
       brand: map['brand'],
-      costUsd: (map['costUsd'] ?? 0).toDouble(),
+      itemCostUsd: itemCost,
+      shippingCostUsd: (map['shippingCostUsd'] ?? 0).toDouble(),
       weight: (map['weight'] ?? 0).toDouble(),
       price: (map['price'] ?? 0).toDouble(),
       minStock: map['minStock'] ?? 0,
       maxStock: map['maxStock'] ?? 0,
+      useIndividualMinMax: map['useIndividualMinMax'] ?? false,
       supplierId: map['supplierId'],
+      purchaseLink: map['purchaseLink'],
       variants: variantsList,
     );
   }
@@ -89,16 +128,22 @@ class Product {
       stock: map['stock'] ?? 0,
     );
 
+    // Migración: soportar costUsd legado -> itemCostUsd
+    final itemCost = (map['itemCostUsd'] ?? map['costUsd'] ?? 0).toDouble();
+
     return Product(
       modelId: map['sku'] ?? '', // Usar SKU antiguo como modelId
       name: map['name'] ?? '',
       brand: map['brand'],
-      costUsd: (map['costUsd'] ?? 0).toDouble(),
+      itemCostUsd: itemCost,
+      shippingCostUsd: (map['shippingCostUsd'] ?? 0).toDouble(),
       weight: (map['weight'] ?? 0).toDouble(),
       price: (map['price'] ?? 0).toDouble(),
       minStock: map['minStock'] ?? 0,
       maxStock: map['maxStock'] ?? 0,
+      useIndividualMinMax: map['useIndividualMinMax'] ?? false,
       supplierId: map['supplierId'],
+      purchaseLink: map['purchaseLink'],
       variants: [legacyVariant],
     );
   }
@@ -107,24 +152,30 @@ class Product {
     String? modelId,
     String? name,
     String? brand,
-    double? costUsd,
+    double? itemCostUsd,
+    double? shippingCostUsd,
     double? weight,
     double? price,
     int? minStock,
     int? maxStock,
+    bool? useIndividualMinMax,
     String? supplierId,
+    String? purchaseLink,
     List<ProductVariant>? variants,
   }) {
     return Product(
       modelId: modelId ?? this.modelId,
       name: name ?? this.name,
       brand: brand ?? this.brand,
-      costUsd: costUsd ?? this.costUsd,
+      itemCostUsd: itemCostUsd ?? this.itemCostUsd,
+      shippingCostUsd: shippingCostUsd ?? this.shippingCostUsd,
       weight: weight ?? this.weight,
       price: price ?? this.price,
       minStock: minStock ?? this.minStock,
       maxStock: maxStock ?? this.maxStock,
+      useIndividualMinMax: useIndividualMinMax ?? this.useIndividualMinMax,
       supplierId: supplierId ?? this.supplierId,
+      purchaseLink: purchaseLink ?? this.purchaseLink,
       variants: variants ?? List.from(this.variants),
     );
   }

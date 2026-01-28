@@ -19,7 +19,7 @@ class OrderCard extends StatelessWidget {
   });
 
   String _formatCurrency(double amount) {
-    final formatter = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$');
+    final formatter = NumberFormat.currency(locale: 'en_US', symbol: 'RD\$');
     return formatter.format(amount);
   }
 

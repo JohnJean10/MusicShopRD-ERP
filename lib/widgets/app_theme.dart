@@ -2,17 +2,17 @@ import 'package:flutter/material.dart';
 
 /// MusicShopRD Theme - Modern dark design matching React version
 class AppColors {
-  // Base colors
-  static const Color slate900 = Color(0xFF0F172A);
-  static const Color slate800 = Color(0xFF1E293B);
-  static const Color slate700 = Color(0xFF334155);
-  static const Color slate600 = Color(0xFF475569);
-  static const Color slate500 = Color(0xFF64748B);
-  static const Color slate400 = Color(0xFF94A3B8);
-  static const Color slate300 = Color(0xFFCBD5E1);
-  static const Color slate200 = Color(0xFFE2E8F0);
-  static const Color slate100 = Color(0xFFF1F5F9);
-  static const Color slate50 = Color(0xFFF8FAFC);
+  // Neutral Grey Scale (Matching B&W Logo)
+  static const Color slate900 = Color(0xFF09090b); // Nearly black
+  static const Color slate800 = Color(0xFF18181b); // Dark grey
+  static const Color slate700 = Color(0xFF27272a);
+  static const Color slate600 = Color(0xFF3f3f46);
+  static const Color slate500 = Color(0xFF52525b);
+  static const Color slate400 = Color(0xFF71717a);
+  static const Color slate300 = Color(0xFFa1a1aa);
+  static const Color slate200 = Color(0xFFe4e4e7);
+  static const Color slate100 = Color(0xFFf4f4f5);
+  static const Color slate50 = Color(0xFFfafafa);
 
   // Accent colors
   static const Color emerald500 = Color(0xFF10B981);

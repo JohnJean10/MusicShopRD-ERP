@@ -51,7 +51,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
   }
 
   String _formatCurrency(double amount) {
-    return NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$').format(amount);
+    return NumberFormat.currency(locale: 'en_US', symbol: 'RD\$').format(amount);
   }
 
   String _formatDate(DateTime date) {

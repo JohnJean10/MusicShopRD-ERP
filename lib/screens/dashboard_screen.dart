@@ -12,7 +12,7 @@ class DashboardScreen extends ConsumerWidget {
 
   String _formatCurrency(double amount, {bool isUsd = false}) {
     return NumberFormat.currency(
-      locale: 'es_DO', 
+      locale: 'en_US', 
       symbol: isUsd ? 'US\$' : 'RD\$'
     ).format(amount);
   }
@@ -70,16 +70,34 @@ class DashboardScreen extends ConsumerWidget {
           // Quadrant Grid
           LayoutBuilder(
             builder: (context, constraints) {
-              final isWide = constraints.maxWidth > 900;
-              final double cardRatio = isWide ? 1.5 : 1.3;
+              final width = constraints.maxWidth;
               
+              // 1. Adaptive Columns
+              int crossAxisCount;
+              if (width > 1000) {
+                crossAxisCount = 2; // Desktop: True 2x2 Quadrant
+              } else {
+                crossAxisCount = width < 600 ? 1 : 2; // Mobile/Tablet
+              }
+              
+              // 2. Adaptive Aspect Ratio
+              double childAspectRatio;
+              if (crossAxisCount == 2) {
+                 // For 2 columns, we want wide cards. 
+                 // On 1920 width, column is ~900px. Height should be ~350-400px.
+                 // Ratio ~2.4
+                 childAspectRatio = width > 1000 ? 2.4 : 1.5; 
+              } else {
+                 childAspectRatio = 1.6; // Mobile 1 column
+              }
+
               return GridView.count(
-                crossAxisCount: isWide ? 2 : 1,
+                crossAxisCount: crossAxisCount,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 mainAxisSpacing: 16,
                 crossAxisSpacing: 16,
-                childAspectRatio: isWide ? 2.5 : 1.8,
+                childAspectRatio: childAspectRatio,
                 children: [
                    // 1. Ventas Abiertas (Blue)
                   _buildKpiCard(

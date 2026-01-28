@@ -108,8 +108,9 @@ class _MusicShopERPHomeState extends ConsumerState<MusicShopERPHome> {
             // Sidebar
             _buildSidebar(config),
             // Main content
+            // Main content
             Expanded(
-              child: content,
+              child: _responsiveContainer(content),
             ),
           ],
         ),
@@ -117,10 +118,19 @@ class _MusicShopERPHomeState extends ConsumerState<MusicShopERPHome> {
     } else {
       // Mobile: Bottom navigation
       return Scaffold(
-        body: SafeArea(child: content),
+        body: SafeArea(child: _responsiveContainer(content)),
         bottomNavigationBar: _buildBottomNav(),
       );
     }
+  }
+
+  Widget _responsiveContainer(Widget child) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(), // No max width limit
+        child: child,
+      ),
+    );
   }
 
   Widget _buildSidebar(AppConfigState config) {
@@ -142,22 +152,11 @@ class _MusicShopERPHomeState extends ConsumerState<MusicShopERPHome> {
             ),
             child: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppColors.emerald500,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.music_note, color: Colors.white, size: 20),
-                ),
-                const SizedBox(width: 12),
-                const Text(
-                  'MusicShopRD',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: -0.5,
+                Expanded(
+                  child: Image.asset(
+                    'assets/images/logo.png',
+                    height: 50,
+                    fit: BoxFit.contain, // Ensure it fits well
                   ),
                 ),
               ],

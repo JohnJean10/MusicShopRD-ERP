@@ -100,7 +100,8 @@ class ProductNotifier extends StateNotifier<List<Product>> {
   /// Genera un modelId único para un producto nuevo
   String generateModelId(String brand) {
     if (brand.length < 2) return DateTime.now().millisecondsSinceEpoch.toString();
-    final brandId = brand.substring(0, 3).toUpperCase();
+    // Use min of 3 or brand length to avoid RangeError
+    final brandId = brand.substring(0, brand.length >= 3 ? 3 : brand.length).toUpperCase();
     final sequence = (state.length + 1).toString().padLeft(4, '0');
     return 'MOD-$brandId-$sequence';
   }

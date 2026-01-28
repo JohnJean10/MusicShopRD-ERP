@@ -21,14 +21,19 @@ class AddProductModal extends ConsumerStatefulWidget {
 
 class _AddProductModalState extends ConsumerState<AddProductModal> {
   late final TextEditingController _nameController;
-  late final TextEditingController _costController;
+  late final TextEditingController _itemCostController;
+  late final TextEditingController _shippingCostController;
   late final TextEditingController _weightController;
   late final TextEditingController _minStockController;
   late final TextEditingController _maxStockController;
   late final TextEditingController _priceController;
+  late final TextEditingController _marginController;
   late final TextEditingController _brandController;
+  late final TextEditingController _purchaseLinkController;
   
   String? _selectedSupplierId;
+  bool _useIndividualMinMax = false;
+  bool _editingPrice = false; // Track if user is editing price vs margin
   
   // Variantes del producto
   List<_VariantFormData> _variants = [];
@@ -38,20 +43,26 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
     super.initState();
     final p = widget.editProduct;
     _nameController = TextEditingController(text: p?.name ?? '');
-    _costController = TextEditingController(text: p?.costUsd.toString() ?? '');
+    _itemCostController = TextEditingController(text: p?.itemCostUsd.toString() ?? '');
+    _shippingCostController = TextEditingController(text: p?.shippingCostUsd.toString() ?? '0');
     _weightController = TextEditingController(text: p?.weight.toString() ?? '');
     _minStockController = TextEditingController(text: p?.minStock.toString() ?? '2');
     _maxStockController = TextEditingController(text: p?.maxStock.toString() ?? '10');
     _priceController = TextEditingController(text: p?.price.toString() ?? '0');
+    _marginController = TextEditingController(text: '30'); // Default 30% margin
     _brandController = TextEditingController(text: p?.brand ?? '');
+    _purchaseLinkController = TextEditingController(text: p?.purchaseLink ?? '');
     
     if (p != null) {
       _selectedSupplierId = p.supplierId;
+      _useIndividualMinMax = p.useIndividualMinMax;
       // Cargar variantes existentes
       _variants = p.variants.map((v) => _VariantFormData(
         skuController: TextEditingController(text: v.sku),
         colorController: TextEditingController(text: v.color),
         stockController: TextEditingController(text: v.stock.toString()),
+        minStockController: TextEditingController(text: v.minStock?.toString() ?? ''),
+        maxStockController: TextEditingController(text: v.maxStock?.toString() ?? ''),
       )).toList();
     }
     
@@ -59,17 +70,51 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
     if (_variants.isEmpty) {
       _addVariant();
     }
+    
+    // Calcular margen inicial si hay precio y costo
+    _calculateMarginFromPrice();
+  }
+  
+  void _calculateMarginFromPrice() {
+    final config = ref.read(configProvider);
+    final itemCost = double.tryParse(_itemCostController.text) ?? 0;
+    final shippingCost = double.tryParse(_shippingCostController.text) ?? 0;
+    final weight = double.tryParse(_weightController.text) ?? 0;
+    final price = double.tryParse(_priceController.text) ?? 0;
+    
+    final landed = ((itemCost + shippingCost) * config.exchangeRate) + (weight * config.courierRate);
+    if (landed > 0 && price > 0) {
+      final margin = ((price - landed) / landed) * 100;
+      _marginController.text = margin.toStringAsFixed(1);
+    }
+  }
+  
+  void _calculatePriceFromMargin() {
+    final config = ref.read(configProvider);
+    final itemCost = double.tryParse(_itemCostController.text) ?? 0;
+    final shippingCost = double.tryParse(_shippingCostController.text) ?? 0;
+    final weight = double.tryParse(_weightController.text) ?? 0;
+    final margin = double.tryParse(_marginController.text) ?? 30;
+    
+    final landed = ((itemCost + shippingCost) * config.exchangeRate) + (weight * config.courierRate);
+    if (landed > 0) {
+      final price = landed * (1 + margin / 100);
+      _priceController.text = price.toStringAsFixed(0);
+    }
   }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _costController.dispose();
+    _itemCostController.dispose();
+    _shippingCostController.dispose();
     _weightController.dispose();
     _minStockController.dispose();
     _maxStockController.dispose();
     _priceController.dispose();
+    _marginController.dispose();
     _brandController.dispose();
+    _purchaseLinkController.dispose();
     for (final v in _variants) {
       v.dispose();
     }
@@ -82,6 +127,8 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
         skuController: TextEditingController(),
         colorController: TextEditingController(),
         stockController: TextEditingController(text: '0'),
+        minStockController: TextEditingController(),
+        maxStockController: TextEditingController(),
       ));
     });
   }
@@ -107,52 +154,69 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
   }
 
   void _handleSave() {
-    if (_nameController.text.isEmpty || _brandController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nombre y Marca son requeridos')),
-      );
-      return;
-    }
-
-    // Validar que todas las variantes tengan SKU y color
-    for (int i = 0; i < _variants.length; i++) {
-      if (_variants[i].skuController.text.isEmpty || _variants[i].colorController.text.isEmpty) {
+    try {
+      if (_nameController.text.isEmpty || _brandController.text.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('La variante ${i + 1} requiere SKU y Color')),
+          const SnackBar(content: Text('Nombre y Marca son requeridos')),
         );
         return;
       }
+
+      // Validar que todas las variantes tengan SKU y color
+      for (int i = 0; i < _variants.length; i++) {
+        if (_variants[i].skuController.text.isEmpty || _variants[i].colorController.text.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('La variante ${i + 1} requiere SKU y Color')),
+          );
+          return;
+        }
+      }
+
+      // Generar modelId para nuevo producto
+      final notifier = ref.read(productProvider.notifier);
+      final isEdit = widget.editProduct != null;
+      final modelId = isEdit 
+        ? widget.editProduct!.modelId 
+        : notifier.generateModelId(_brandController.text);
+
+      // Construir lista de variantes
+      final variants = _variants.map((v) => ProductVariant(
+        sku: v.skuController.text.trim(),
+        color: v.colorController.text.trim(),
+        stock: int.tryParse(v.stockController.text) ?? 0,
+        minStock: _useIndividualMinMax ? int.tryParse(v.minStockController.text) : null,
+        maxStock: _useIndividualMinMax ? int.tryParse(v.maxStockController.text) : null,
+      )).toList();
+
+      final product = Product(
+        modelId: modelId,
+        name: _nameController.text.trim(),
+        brand: _brandController.text.trim(),
+        itemCostUsd: double.tryParse(_itemCostController.text) ?? 0,
+        shippingCostUsd: double.tryParse(_shippingCostController.text) ?? 0,
+        weight: double.tryParse(_weightController.text) ?? 0,
+        minStock: int.tryParse(_minStockController.text) ?? 2,
+        maxStock: int.tryParse(_maxStockController.text) ?? 10,
+        useIndividualMinMax: _useIndividualMinMax,
+        price: double.tryParse(_priceController.text) ?? 0,
+        supplierId: _selectedSupplierId,
+        purchaseLink: _purchaseLinkController.text.trim().isEmpty ? null : _purchaseLinkController.text.trim(),
+        variants: variants,
+      );
+
+      widget.onSave(product);
+      Navigator.of(context).pop();
+    } catch (e, stackTrace) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al guardar: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+      debugPrint('Error saving product: $e');
+      debugPrint('Stack trace: $stackTrace');
     }
-
-    // Generar modelId para nuevo producto
-    final notifier = ref.read(productProvider.notifier);
-    final isEdit = widget.editProduct != null;
-    final modelId = isEdit 
-      ? widget.editProduct!.modelId 
-      : notifier.generateModelId(_brandController.text);
-
-    // Construir lista de variantes
-    final variants = _variants.map((v) => ProductVariant(
-      sku: v.skuController.text.trim(),
-      color: v.colorController.text.trim(),
-      stock: int.tryParse(v.stockController.text) ?? 0,
-    )).toList();
-
-    final product = Product(
-      modelId: modelId,
-      name: _nameController.text.trim(),
-      brand: _brandController.text.trim(),
-      costUsd: double.tryParse(_costController.text) ?? 0,
-      weight: double.tryParse(_weightController.text) ?? 0,
-      minStock: int.tryParse(_minStockController.text) ?? 2,
-      maxStock: int.tryParse(_maxStockController.text) ?? 10,
-      price: double.tryParse(_priceController.text) ?? 0,
-      supplierId: _selectedSupplierId,
-      variants: variants,
-    );
-
-    widget.onSave(product);
-    Navigator.of(context).pop();
   }
 
   @override
@@ -243,36 +307,121 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
               ),
               const SizedBox(height: 16),
               
-              // Cost, Weight, Price Row
+              // Purchase Link
+              _buildField('Link de Compra (URL)', _purchaseLinkController),
+              const SizedBox(height: 16),
+              
+              // COSTOS Section
+              const Text(
+                'COSTOS',
+                style: TextStyle(color: AppColors.slate400, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1),
+              ),
+              const SizedBox(height: 12),
+              
+              // Item Cost, Shipping Cost, Weight Row
               Row(
                 children: [
                   Expanded(
-                    child: _buildField('Costo USD', _costController, isNumber: true),
+                    child: _buildField('Costo Artículo USD', _itemCostController, isNumber: true, onChanged: (_) {
+                      _calculateMarginFromPrice();
+                      setState(() {});
+                    }),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _buildField('Peso (Lbs)', _weightController, isNumber: true),
+                    child: _buildField('Costo Envío USD', _shippingCostController, isNumber: true, onChanged: (_) {
+                      _calculateMarginFromPrice();
+                      setState(() {});
+                    }),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _buildField('Precio RD\$', _priceController, isNumber: true),
+                    child: _buildField('Peso (Lbs)', _weightController, isNumber: true, onChanged: (_) {
+                      _calculateMarginFromPrice();
+                      setState(() {});
+                    }),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // Total Cost Display
+              Builder(builder: (context) {
+                final config = ref.watch(configProvider);
+                final itemCost = double.tryParse(_itemCostController.text) ?? 0;
+                final shippingCost = double.tryParse(_shippingCostController.text) ?? 0;
+                final weight = double.tryParse(_weightController.text) ?? 0;
+                final totalUsd = itemCost + shippingCost;
+                final landed = (totalUsd * config.exchangeRate) + (weight * config.courierRate);
+                return Row(
+                  children: [
+                    Text('Total USD: \$${totalUsd.toStringAsFixed(2)}', style: const TextStyle(color: AppColors.slate400, fontSize: 12)),
+                    const SizedBox(width: 16),
+                    Text('Costo Aterrizado: RD\$${landed.toStringAsFixed(0)}', style: const TextStyle(color: AppColors.emerald400, fontSize: 12, fontWeight: FontWeight.w500)),
+                  ],
+                );
+              }),
+              const SizedBox(height: 16),
+              
+              // PRECIO Section
+              const Text(
+                'PRECIO Y MARGEN',
+                style: TextStyle(color: AppColors.slate400, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1),
+              ),
+              const SizedBox(height: 12),
+              
+              // Margin and Price Row
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildField('Margen %', _marginController, isNumber: true, onChanged: (_) {
+                      _calculatePriceFromMargin();
+                      setState(() {});
+                    }),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: _buildField('Precio Venta RD\$', _priceController, isNumber: true, onChanged: (_) {
+                      _calculateMarginFromPrice();
+                      setState(() {});
+                    }),
                   ),
                 ],
               ),
               const SizedBox(height: 16),
               
-              // Min/Max Stock
+              // STOCK Section
+              const Text(
+                'NIVELES DE STOCK',
+                style: TextStyle(color: AppColors.slate400, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1),
+              ),
+              const SizedBox(height: 12),
+              
+              // Checkbox for individual min/max
               Row(
                 children: [
-                  Expanded(
-                    child: _buildField('Stock Mínimo', _minStockController, isNumber: true),
+                  Checkbox(
+                    value: _useIndividualMinMax,
+                    onChanged: (val) => setState(() => _useIndividualMinMax = val ?? false),
+                    activeColor: AppColors.emerald500,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildField('Stock Máximo', _maxStockController, isNumber: true),
-                  ),
+                  const Text('Min/Max individual por variante', style: TextStyle(color: AppColors.slate300)),
                 ],
               ),
+              
+              // Min/Max Stock (only if not individual)
+              if (!_useIndividualMinMax)
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildField('Stock Mínimo', _minStockController, isNumber: true),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildField('Stock Máximo', _maxStockController, isNumber: true),
+                    ),
+                  ],
+                ),
               
               const SizedBox(height: 24),
               const Divider(color: AppColors.slate700),
@@ -433,6 +582,49 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
               ),
             ],
           ),
+          // Individual Min/Max (only if flag is enabled)
+          if (_useIndividualMinMax) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: variant.minStockController,
+                    style: const TextStyle(color: Colors.white),
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    decoration: InputDecoration(
+                      labelText: 'Min',
+                      filled: true,
+                      fillColor: AppColors.slate800,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: AppColors.slate700),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: variant.maxStockController,
+                    style: const TextStyle(color: Colors.white),
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    decoration: InputDecoration(
+                      labelText: 'Max',
+                      filled: true,
+                      fillColor: AppColors.slate800,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: AppColors.slate700),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -487,16 +679,22 @@ class _VariantFormData {
   final TextEditingController skuController;
   final TextEditingController colorController;
   final TextEditingController stockController;
+  final TextEditingController minStockController;
+  final TextEditingController maxStockController;
   
   _VariantFormData({
     required this.skuController,
     required this.colorController,
     required this.stockController,
+    required this.minStockController,
+    required this.maxStockController,
   });
   
   void dispose() {
     skuController.dispose();
     colorController.dispose();
     stockController.dispose();
+    minStockController.dispose();
+    maxStockController.dispose();
   }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/product.dart';
 import '../models/product_variant.dart';
 import '../providers/app_providers.dart';
@@ -46,7 +47,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   String _formatCurrency(double amount) {
-    return NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$').format(amount);
+    return NumberFormat.currency(locale: 'en_US', symbol: 'RD\$').format(amount);
   }
 
   void _showAddModal([Product? product]) {
@@ -343,6 +344,50 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     style: const TextStyle(color: AppColors.slate400, fontSize: 12, fontFamily: 'monospace'),
                     textAlign: TextAlign.center,
                   ),
+                ),
+                
+                // Margin %
+                Expanded(
+                  flex: 1,
+                  child: Builder(
+                    builder: (context) {
+                      final margin = landed > 0 && product.price > 0
+                          ? ((product.price - landed) / landed) * 100
+                          : 0.0;
+                      final marginColor = margin >= 30
+                          ? AppColors.emerald400
+                          : margin >= 15
+                              ? AppColors.orange400
+                              : AppColors.red400;
+                      return Text(
+                        '${margin.toStringAsFixed(1)}%',
+                        style: TextStyle(
+                          color: marginColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        textAlign: TextAlign.center,
+                      );
+                    },
+                  ),
+                ),
+                
+                // Purchase Link Icon
+                SizedBox(
+                  width: 40,
+                  child: product.purchaseLink != null && product.purchaseLink!.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.shopping_cart_outlined, size: 18),
+                          color: AppColors.blue400,
+                          tooltip: 'Abrir link de compra',
+                          onPressed: () async {
+                            final uri = Uri.tryParse(product.purchaseLink!);
+                            if (uri != null) {
+                              launchUrl(uri, mode: LaunchMode.externalApplication);
+                            }
+                          },
+                        )
+                      : const Icon(Icons.link_off, size: 16, color: AppColors.slate700),
                 ),
                 
                 // Actions

@@ -27,7 +27,7 @@ class KanbanColumn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 340,
+      // width: 340, // Removed fixed width to allow responsiveness
       margin: const EdgeInsets.only(right: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

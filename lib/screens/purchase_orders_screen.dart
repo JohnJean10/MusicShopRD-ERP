@@ -5,6 +5,7 @@ import '../models/purchase_order.dart';
 import '../providers/app_providers.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/create_purchase_order_modal.dart';
+import '../widgets/process_purchase_modal.dart';
 
 class PurchaseOrdersScreen extends ConsumerStatefulWidget {
   const PurchaseOrdersScreen({super.key});
@@ -118,7 +119,20 @@ class _PurchaseOrdersScreenState extends ConsumerState<PurchaseOrdersScreen> {
                   itemCount: filteredOrders.length,
                   itemBuilder: (context, index) {
                     final order = filteredOrders[index];
-                    return _PurchaseOrderCard(order: order);
+                    return _PurchaseOrderCard(
+                      order: order,
+                      onTap: () {
+                        showDialog(
+                          context: context,
+                          builder: (context) => ProcessPurchaseModal(
+                            order: order,
+                            onSave: (updated) {
+                              ref.read(purchaseOrderProvider.notifier).updatePurchaseOrder(updated);
+                            },
+                          ),
+                        );
+                      },
+                    );
                   },
                 ),
           ),
@@ -130,8 +144,9 @@ class _PurchaseOrdersScreenState extends ConsumerState<PurchaseOrdersScreen> {
 
 class _PurchaseOrderCard extends StatelessWidget {
   final PurchaseOrder order;
+  final VoidCallback onTap;
 
-  const _PurchaseOrderCard({required this.order});
+  const _PurchaseOrderCard({required this.order, required this.onTap});
 
   Color _getStatusColor(PurchaseOrderStatus status) {
     switch (status) {
@@ -153,65 +168,97 @@ class _PurchaseOrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return Card(
+      color: Colors.transparent,
+      elevation: 0,
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.slate800,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.slate700),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.slate800,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.slate700),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Icon(Icons.business, color: AppColors.slate400, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    order.supplierName,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                  Row(
+                    children: [
+                      Icon(Icons.business, color: AppColors.slate400, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        order.supplierName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(order.status).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: _getStatusColor(order.status).withValues(alpha: 0.5)),
+                    ),
+                    child: Text(
+                      _getStatusLabel(order.status),
+                      style: TextStyle(
+                        color: _getStatusColor(order.status),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _getStatusColor(order.status).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: _getStatusColor(order.status).withValues(alpha: 0.5)),
-                ),
-                child: Text(
-                  _getStatusLabel(order.status),
-                  style: TextStyle(
-                    color: _getStatusColor(order.status),
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
+              const SizedBox(height: 12),
+              const Divider(height: 1, color: AppColors.slate700),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${order.items.length} productos',
+                        style: const TextStyle(color: AppColors.slate300),
+                      ),
+                      Text(
+                        'Total: ${NumberFormat.currency(locale: 'en_US', symbol: 'US\$').format(order.totalUsd)}',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
+                    ],
                   ),
-                ),
+                 if (order.status != PurchaseOrderStatus.received && order.status != PurchaseOrderStatus.cancelled)
+                    Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.slate500),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (order.trackingNumber != null && order.trackingNumber!.isNotEmpty)
+                 Padding(
+                   padding: const EdgeInsets.only(bottom: 4),
+                   child: Text(
+                     'Tracking: ${order.trackingNumber}',
+                     style: const TextStyle(color: AppColors.blue400, fontSize: 13),
+                   ),
+                 ),
+              Text(
+                'Fecha: ${DateFormat('dd/MM/yyyy').format(order.date)}',
+                style: const TextStyle(color: AppColors.slate500, fontSize: 12),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          const Divider(height: 1, color: AppColors.slate700),
-          const SizedBox(height: 12),
-          Text(
-            '${order.items.length} productos · Total: US\$${order.totalUsd.toStringAsFixed(2)}',
-            style: const TextStyle(color: AppColors.slate300),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Fecha: ${DateFormat('dd/MM/yyyy').format(order.date)}',
-            style: const TextStyle(color: AppColors.slate500, fontSize: 12),
-          ),
-        ],
+        ),
       ),
     );
   }

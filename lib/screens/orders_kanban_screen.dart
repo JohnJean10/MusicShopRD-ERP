@@ -4,7 +4,10 @@ import '../models/order.dart';
 import '../providers/app_providers.dart';
 import '../widgets/kanban_column.dart';
 import '../widgets/create_order_modal.dart';
+import '../widgets/order_details_modal.dart';
+import '../widgets/process_order_modal.dart';
 import '../services/export_service.dart';
+import '../widgets/app_theme.dart';
 
 class OrdersKanbanScreen extends ConsumerStatefulWidget {
   const OrdersKanbanScreen({super.key});
@@ -43,23 +46,57 @@ class _OrdersKanbanScreenState extends ConsumerState<OrdersKanbanScreen> {
   }
 
   void _handleAction(Order order) {
-    OrderStatus newStatus;
-    switch (order.status) {
-      case OrderStatus.quote:
-        newStatus = OrderStatus.pending;
-        break;
-      case OrderStatus.pending:
-        newStatus = OrderStatus.ready;
-        break;
-      case OrderStatus.ready:
-        newStatus = OrderStatus.completed;
-        break;
-      default:
-        return;
+    // 1. View Details (Completed or Cancelled)
+    if (order.status == OrderStatus.completed || order.status == OrderStatus.cancelled) {
+      showDialog(
+        context: context,
+        builder: (context) => Dialog(
+          backgroundColor: Colors.transparent,
+          child: OrderDetailsModal(order: order),
+        ),
+      );
+      return;
     }
-    
-    final updatedOrder = order.copyWith(status: newStatus);
-    ref.read(orderProvider.notifier).updateOrder(updatedOrder);
+
+    // 2. Process Order (State Transitions)
+    if (order.status == OrderStatus.pending) {
+       // Pending -> Ready (Confirmar llegada/Pago)
+       showDialog(
+         context: context,
+         builder: (context) => ProcessOrderModal(
+           order: order,
+           isPayment: true,
+           onConfirm: (method, date) {
+             final updated = order.copyWith(
+               status: OrderStatus.ready,
+               paymentMethod: method,
+               paymentDate: date,
+             );
+             ref.read(orderProvider.notifier).updateOrder(updated);
+           },
+         ),
+       );
+    } else if (order.status == OrderStatus.ready) {
+      // Ready -> Completed (Confirmar entrega)
+       showDialog(
+         context: context,
+         builder: (context) => ProcessOrderModal(
+           order: order,
+           isPayment: false,
+           onConfirm: (_, date) {
+             final updated = order.copyWith(
+               status: OrderStatus.completed,
+               deliveryDate: date,
+             );
+             ref.read(orderProvider.notifier).updateOrder(updated);
+           },
+         ),
+       );
+    } else if (order.status == OrderStatus.quote) {
+      // Quote -> Pending (Start process)
+        final updated = order.copyWith(status: OrderStatus.pending);
+        ref.read(orderProvider.notifier).updateOrder(updated);
+    }
   }
 
   void _handlePrint(Order order) {
@@ -104,7 +141,7 @@ class _OrdersKanbanScreenState extends ConsumerState<OrdersKanbanScreen> {
         .toList();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: AppColors.slate900,
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -117,7 +154,7 @@ class _OrdersKanbanScreenState extends ConsumerState<OrdersKanbanScreen> {
                 const Text(
                   'Tablero de Pedidos',
                   style: TextStyle(
-                    color: Color(0xFF10B981),
+                    color: AppColors.emerald500,
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
                   ),
@@ -129,7 +166,7 @@ class _OrdersKanbanScreenState extends ConsumerState<OrdersKanbanScreen> {
                       icon: const Icon(Icons.add, size: 18),
                       label: const Text('Nueva Cotización'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue.shade600,
+                        backgroundColor: AppColors.blue500,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
@@ -143,7 +180,7 @@ class _OrdersKanbanScreenState extends ConsumerState<OrdersKanbanScreen> {
                       icon: const Icon(Icons.add, size: 18),
                       label: const Text('Nuevo Pedido'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF10B981),
+                        backgroundColor: AppColors.emerald500,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
@@ -165,20 +202,20 @@ class _OrdersKanbanScreenState extends ConsumerState<OrdersKanbanScreen> {
                 style: const TextStyle(color: Colors.white),
                 decoration: InputDecoration(
                   hintText: 'Buscar cliente o ID...',
-                  hintStyle: TextStyle(color: Colors.grey.shade500),
+                  hintStyle: const TextStyle(color: AppColors.slate500),
                   filled: true,
-                  fillColor: const Color(0xFF1E293B),
+                  fillColor: AppColors.slate800,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFF334155)),
+                    borderSide: const BorderSide(color: AppColors.slate700),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFF334155)),
+                    borderSide: const BorderSide(color: AppColors.slate700),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFF10B981)),
+                    borderSide: const BorderSide(color: AppColors.emerald500),
                   ),
                   prefixIcon: Icon(Icons.search, color: Colors.grey.shade500),
                 ),
@@ -188,43 +225,104 @@ class _OrdersKanbanScreenState extends ConsumerState<OrdersKanbanScreen> {
             
             // Kanban Board
             Expanded(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    KanbanColumn(
-                      title: 'PROSPECTOS / INTERESADOS',
-                      orders: prospectsOrders,
-                      accentColor: Colors.blue,
-                      emptyMessage: 'Sin cotizaciones',
-                      onPrint: _handlePrint,
-                      onAction: _handleAction,
-                      getActionLabel: _getActionLabel,
-                      getActionIcon: _getActionIcon,
-                    ),
-                    KanbanColumn(
-                      title: 'EN PROCESO / PAGADOS',
-                      orders: inProgressOrders,
-                      accentColor: Colors.orange,
-                      emptyMessage: 'Sin pedidos en proceso',
-                      onPrint: _handlePrint,
-                      onAction: _handleAction,
-                      getActionLabel: _getActionLabel,
-                      getActionIcon: _getActionIcon,
-                    ),
-                    KanbanColumn(
-                      title: 'FINALIZADOS',
-                      orders: completedOrders,
-                      accentColor: Colors.green,
-                      emptyMessage: 'Sin pedidos finalizados',
-                      onPrint: _handlePrint,
-                      onAction: _handleAction,
-                      getActionLabel: _getActionLabel,
-                      getActionIcon: _getActionIcon,
-                    ),
-                  ],
-                ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isDesktop = constraints.maxWidth > 1100;
+
+                  if (isDesktop) {
+                    // Desktop: Full width columns, no scrolling
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: KanbanColumn(
+                            title: 'PROSPECTOS / INTERESADOS',
+                            orders: prospectsOrders,
+                            accentColor: Colors.blue,
+                            emptyMessage: 'Sin cotizaciones',
+                            onPrint: _handlePrint,
+                            onAction: _handleAction,
+                            getActionLabel: _getActionLabel,
+                            getActionIcon: _getActionIcon,
+                          ),
+                        ),
+                        Expanded(
+                          child: KanbanColumn(
+                            title: 'EN PROCESO / PAGADOS',
+                            orders: inProgressOrders,
+                            accentColor: Colors.orange,
+                            emptyMessage: 'Sin pedidos en proceso',
+                            onPrint: _handlePrint,
+                            onAction: _handleAction,
+                            getActionLabel: _getActionLabel,
+                            getActionIcon: _getActionIcon,
+                          ),
+                        ),
+                        Expanded(
+                          child: KanbanColumn(
+                            title: 'FINALIZADOS',
+                            orders: completedOrders,
+                            accentColor: Colors.green,
+                            emptyMessage: 'Sin pedidos finalizados',
+                            onPrint: _handlePrint,
+                            onAction: _handleAction,
+                            getActionLabel: _getActionLabel,
+                            getActionIcon: _getActionIcon,
+                          ),
+                        ),
+                      ],
+                    );
+                  } else {
+                    // Mobile/Tablet: Horizontal scroll with fixed width columns
+                    return SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 340,
+                            child: KanbanColumn(
+                              title: 'PROSPECTOS / INTERESADOS',
+                              orders: prospectsOrders,
+                              accentColor: Colors.blue,
+                              emptyMessage: 'Sin cotizaciones',
+                              onPrint: _handlePrint,
+                              onAction: _handleAction,
+                              getActionLabel: _getActionLabel,
+                              getActionIcon: _getActionIcon,
+                            ),
+                          ),
+                          SizedBox(
+                            width: 340,
+                            child: KanbanColumn(
+                              title: 'EN PROCESO / PAGADOS',
+                              orders: inProgressOrders,
+                              accentColor: Colors.orange,
+                              emptyMessage: 'Sin pedidos en proceso',
+                              onPrint: _handlePrint,
+                              onAction: _handleAction,
+                              getActionLabel: _getActionLabel,
+                              getActionIcon: _getActionIcon,
+                            ),
+                          ),
+                          SizedBox(
+                            width: 340,
+                            child: KanbanColumn(
+                              title: 'FINALIZADOS',
+                              orders: completedOrders,
+                              accentColor: Colors.green,
+                              emptyMessage: 'Sin pedidos finalizados',
+                              onPrint: _handlePrint,
+                              onAction: _handleAction,
+                              getActionLabel: _getActionLabel,
+                              getActionIcon: _getActionIcon,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                },
               ),
             ),
           ],

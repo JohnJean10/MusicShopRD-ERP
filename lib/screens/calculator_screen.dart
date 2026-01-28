@@ -23,7 +23,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   }
 
   String _formatCurrency(double amount) {
-    return NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$').format(amount);
+    return NumberFormat.currency(locale: 'en_US', symbol: 'RD\$').format(amount);
   }
 
   @override

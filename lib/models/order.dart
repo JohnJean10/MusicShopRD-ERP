@@ -49,6 +49,9 @@ class Order {
   final List<OrderItem> items;
   final double total;
   final OrderStatus status;
+  final String? paymentMethod;
+  final DateTime? paymentDate;
+  final DateTime? deliveryDate;
 
   Order({
     required this.id,
@@ -57,6 +60,9 @@ class Order {
     required this.items,
     required this.total,
     required this.status,
+    this.paymentMethod,
+    this.paymentDate,
+    this.deliveryDate,
   });
 
   Map<String, dynamic> toMap() {
@@ -67,6 +73,9 @@ class Order {
       'items': items.map((i) => i.toMap()).toList(),
       'total': total,
       'status': status.name,
+      'paymentMethod': paymentMethod,
+      'paymentDate': paymentDate?.toIso8601String(),
+      'deliveryDate': deliveryDate?.toIso8601String(),
     };
   }
 
@@ -81,6 +90,9 @@ class Order {
         (e) => e.name == map['status'],
         orElse: () => OrderStatus.quote,
       ),
+      paymentMethod: map['paymentMethod'],
+      paymentDate: map['paymentDate'] != null ? DateTime.parse(map['paymentDate']) : null,
+      deliveryDate: map['deliveryDate'] != null ? DateTime.parse(map['deliveryDate']) : null,
     );
   }
 
@@ -91,6 +103,9 @@ class Order {
     List<OrderItem>? items,
     double? total,
     OrderStatus? status,
+    String? paymentMethod,
+    DateTime? paymentDate,
+    DateTime? deliveryDate,
   }) {
     return Order(
       id: id ?? this.id,
@@ -99,6 +114,9 @@ class Order {
       items: items ?? this.items,
       total: total ?? this.total,
       status: status ?? this.status,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      paymentDate: paymentDate ?? this.paymentDate,
+      deliveryDate: deliveryDate ?? this.deliveryDate,
     );
   }
 
